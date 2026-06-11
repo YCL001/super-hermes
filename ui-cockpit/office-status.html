@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fusion 状态总览</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #121932;
+      --panel-2: #182243;
+      --line: #2b3a6b;
+      --text: #eaf0ff;
+      --muted: #97a3c7;
+      --ok: #2dd4bf;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --busy: #60a5fa;
+      --idle: #94a3b8;
+      --active-glow: 0 0 0 1px rgba(96,165,250,.45), 0 0 24px rgba(96,165,250,.22);
+      --card-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      background: linear-gradient(180deg, #08101e, #10182d 45%, #0b1020);
+      color: var(--text);
+    }
+    .wrap { max-width: 1600px; margin: 0 auto; padding: 20px; }
+    .hero {
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+      padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px;
+      background: rgba(18,25,50,.92); box-shadow: var(--card-shadow);
+    }
+    .hero h1 { margin: 0 0 6px; font-size: 28px; }
+    .hero p { margin: 0; color: var(--muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 6px 10px; border-radius: 999px; font-size: 12px;
+      border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--muted);
+    }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card {
+      grid-column: span 12; background: rgba(18,25,50,.95); border: 1px solid var(--line);
+      border-radius: 18px; box-shadow: var(--card-shadow); overflow: hidden;
+    }
+    .card.half { grid-column: span 6; display: flex; flex-direction: column; }
+    .card.third { grid-column: span 4; }
+    .card .hd {
+      padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex;
+      justify-content: space-between; align-items: center; gap: 12px;
+      background: rgba(255,255,255,.02); flex-shrink: 0;
+    }
+    .card .hd h2 { margin: 0; font-size: 18px; }
+    .card .bd { padding: 16px; flex: 1; min-height: 0; overflow: hidden; }
+    /* 记忆文件列表 与 技能列表 同一高度，超了滚动 */
+    section.card.half:has(#memoryFileList) .bd,
+    section.card.half:has(#skillList) .bd { max-height: 600px; overflow-y: auto; }
+    .kv { display: grid; grid-template-columns: 120px 1fr; gap: 10px 14px; }
+    .kv .k { color: var(--muted); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; border: 1px solid transparent;
+    }
+    .ok { background: rgba(45,212,191,.12); color: var(--ok); border-color: rgba(45,212,191,.35); }
+    .warn { background: rgba(245,158,11,.12); color: var(--warn); border-color: rgba(245,158,11,.35); }
+    .bad { background: rgba(239,68,68,.12); color: var(--bad); border-color: rgba(239,68,68,.35); }
+    .busy { background: rgba(96,165,250,.12); color: var(--busy); border-color: rgba(96,165,250,.35); }
+    .idle { background: rgba(148,163,184,.12); color: var(--idle); border-color: rgba(148,163,184,.35); }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .stat { padding: 14px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line); }
+    .stat .n { font-size: 28px; font-weight: 800; margin-top: 6px; }
+    .muted { color: var(--muted); }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .item { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: rgba(255,255,255,.02); }
+    .item .top { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:8px; }
+    .item .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .item .desc { color: var(--muted); font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(255,255,255,.04); border: 1px solid var(--line); color: var(--muted); }
+    .title { font-weight: 700; }
+    .sub { color: var(--muted); font-size: 13px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .bar { height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.06); margin-top: 8px; }
+    .bar > span { display:block; height:100%; background: linear-gradient(90deg, #60a5fa, #2dd4bf); }
+    .list { display: flex; flex-direction: column; gap: 12px; min-height: 0; max-height: 100%; overflow-y: auto; }
+    .empty { padding: 18px; border-radius: 14px; border: 1px dashed var(--line); color: var(--muted); text-align: center; }
+    .footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: right; }
+    .clickable-title { cursor: pointer; user-select: none; }
+    .clickable-title:hover { background: rgba(255,255,255,.04); }
+    .collapse-indicator { color: var(--muted); font-size: 12px; }
+    .collapsed-body { display: none; }
+    .skill-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; min-height: 0; max-height: 100%; overflow-y: auto; }
+    .skill-mini {
+      border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+      background: rgba(255,255,255,.03); min-width: 0;
+    }
+    .skill-mini .mini-title { font-weight: 700; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .skill-mini .mini-desc { color: var(--muted); font-size: 12px; line-height: 1.5; min-height: 18px; }
+
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 999;
+      background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity .2s ease;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal-box {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+      width: min(740px, 92vw); max-height: 82vh; display: flex; flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    }
+    .modal-head {
+      padding: 16px 18px; border-bottom: 1px solid var(--line); display: flex;
+      justify-content: space-between; align-items: center; gap: 12px;
+    }
+    .modal-head h3 { margin: 0; font-size: 16px; }
+    .modal-close {
+      background: transparent; border: 0; color: var(--muted); font-size: 22px;
+      cursor: pointer; line-height: 1; padding: 0 4px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+    .modal-body textarea {
+      width: 100%; min-height: 340px; resize: vertical;
+      background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 12px;
+      color: var(--text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 13px; line-height: 1.6; padding: 12px; outline: none;
+    }
+    .modal-body textarea:focus { border-color: rgba(96,165,250,.55); }
+    .modal-foot {
+      padding: 12px 18px; border-top: 1px solid var(--line); display: flex;
+      justify-content: flex-end; gap: 10px;
+    }
+    .memory-name-btn {
+      appearance: none; border: 0; background: transparent; color: var(--text);
+      padding: 0; font: inherit; font-weight: 700; cursor: pointer; text-align: left;
+    }
+    .memory-name-btn:hover { color: #9cc0ff; }
+    .model-switch-wrap { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); }
+    .model-switch-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .model-select {
+      flex: 1 1 220px; min-width: 0; height: 38px; border-radius: 12px; border: 1px solid var(--line);
+      background: rgba(255,255,255,.04); color: var(--text); padding: 0 12px; outline: none;
+    }
+    .model-select:focus { border-color: rgba(96,165,250,.6); box-shadow: 0 0 0 1px rgba(96,165,250,.28); }
+    .model-select option { background: #121932; color: #eaf0ff; }
+    .action-btn {
+      height: 38px; padding: 0 16px; border: 1px solid rgba(96,165,250,.4); border-radius: 12px;
+      background: linear-gradient(180deg, rgba(37,99,235,.28), rgba(29,78,216,.18)); color: var(--text);
+      font-weight: 700; cursor: pointer; transition: .18s ease;
+    }
+    .action-btn:hover { border-color: rgba(96,165,250,.7); background: linear-gradient(180deg, rgba(59,130,246,.34), rgba(37,99,235,.22)); }
+    .action-btn:disabled { cursor: not-allowed; opacity: .6; }
+    .inline-hint { margin-top: 8px; color: var(--muted); font-size: 12px; }
+
+    .office-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .hand-card {
+      background: linear-gradient(180deg, rgba(23,31,61,.96), rgba(18,25,50,.96));
+      border: 1px solid var(--line); border-radius: 18px; padding: 16px; transition: .18s ease;
+    }
+    .hand-card.active { border-color: rgba(96,165,250,.45); box-shadow: var(--active-glow); background: linear-gradient(180deg, rgba(23,42,78,.98), rgba(18,25,50,.98)); }
+    .hand-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 12px; }
+    .hand-name { font-size: 20px; font-weight: 800; }
+    .hand-meta { display:grid; grid-template-columns: 82px 1fr; gap: 8px 10px; font-size: 13px; margin-bottom: 14px; }
+    .hand-meta .k { color: var(--muted); }
+    .sub-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .sub-card {
+      min-height: 150px; border-radius: 16px; border: 1px solid var(--line); padding: 12px;
+      background: rgba(255,255,255,.025); transition: .18s ease;
+    }
+    .sub-card.active { border-color: rgba(45,212,191,.42); box-shadow: 0 0 0 1px rgba(45,212,191,.28), 0 0 18px rgba(45,212,191,.18); background: rgba(20,53,57,.36); }
+    .sub-card.stuck { border-color: rgba(239,68,68,.42); box-shadow: 0 0 0 1px rgba(239,68,68,.28), 0 0 18px rgba(239,68,68,.18); background: rgba(62,22,30,.36); }
+    .sub-title { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom: 8px; }
+    .slot { color: var(--muted); font-size: 12px; }
+    .rt { font-size: 12px; color: var(--muted); }
+    .meta-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .tag {
+      display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+      font-size:11px; border:1px solid var(--line); background: rgba(255,255,255,.04); color: var(--muted);
+    }
+    .desc {
+      color: var(--muted); font-size: 13px; line-height: 1.55; margin-top: 8px;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+      min-height: 2.8em;
+    }
+
+    @media (max-width: 1200px) {
+      .card.half, .card.third { grid-column: span 12; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .office-grid { grid-template-columns: 1fr; }
+      .skill-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 800px) {
+      .skill-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <h1>融合执行状态总览</h1>
+        <p>终端干活，这里只看谁在忙、谁卡住、任务走到哪一步。</p>
+      </div>
+      <div class="chips">
+        <span class="chip">主入口：终端</span>
+        <span class="chip">面板职责：配置 / 监控 / 反馈</span>
+        <span class="chip" id="lastRefresh">最近刷新：--</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card third"><div class="hd"><h2>1. 主 Hermes 状态</h2><span id="hermesBadge" class="pill idle">读取中</span></div><div class="bd"><div class="kv"><div class="k">主目录</div><div id="hermesHome" class="mono">--</div><div class="k">默认模型</div><div id="hermesModel">--</div><div class="k">推理强度</div><div id="hermesReasoning">--</div><div class="k">技能数量</div><div id="hermesSkillCount">--</div><div class="k">记忆文件</div><div id="hermesMemoryCount">--</div></div><div class="model-switch-wrap"><div class="sub" style="margin-bottom:8px;">模型切换</div><div class="model-switch-row"><select id="modelSelect" class="model-select"><option value="">读取中...</option></select><button id="modelSwitchBtn" class="action-btn" type="button">切换</button><button id="modelTestBtn" class="action-btn" type="button" style="border-color:var(--warn);background:transparent;">测试</button></div><div id="modelSwitchHint" class="inline-hint"></div></div></div></section>
+      <section class="card third"><div class="hd"><h2>2. 网关状态</h2><span id="gatewayBadge" class="pill idle">读取中</span></div><div class="bd"><div class="kv"><div class="k">模式</div><div id="gatewayMode">--</div><div class="k">端口</div><div id="gatewayPort">24318</div><div class="k">对外入口</div><div id="gatewayEntry">Hermes</div><div class="k">协议</div><div id="gatewayWs">/ws</div><div class="k">认证</div><div id="gatewayAuth">--</div></div><div class="model-switch-wrap"><button id="restartGatewayBtn" class="action-btn" type="button" style="width:100%;">重启网关</button></div></div></section>
+      <section class="card third"><div class="hd"><h2>3. 执行手状态</h2><span id="execBadge" class="pill idle">读取中</span></div><div class="bd"><div class="kv"><div class="k">执行层模式</div><div id="execMode">--</div><div class="k">主模型</div><div id="execModel">--</div><div class="k">供应商数</div><div id="execProviders">--</div><div class="k">模型槽位</div><div id="execModels">--</div><div class="k">复用源</div><div id="execReuse">--</div></div><div class="model-switch-wrap"><div class="sub" style="margin-bottom:8px;">执行手模型切换</div><div class="model-switch-row"><select id="execModelSelect" class="model-select"><option value="">读取中...</option></select><button id="execModelSwitchBtn" class="action-btn" type="button">切换</button><button id="execModelTestBtn" class="action-btn" type="button" style="border-color:var(--warn);background:transparent;">测试</button></div><div id="execModelSwitchHint" class="inline-hint"></div></div></div></section>
+
+      <section class="card">
+        <div class="hd"><h2>4. 执行手 / 子 AG 办公位</h2><span id="runtimeBadge" class="pill idle">等待数据</span></div>
+        <div class="bd">
+          <div class="stats" style="margin-bottom:16px;">
+            <div class="stat"><div class="muted">任务总数</div><div id="taskTotal" class="n">0</div></div>
+            <div class="stat"><div class="muted">执行手总数</div><div id="workerTotal" class="n">0</div></div>
+            <div class="stat"><div class="muted">子 AG 总数</div><div id="subAgentTotal" class="n">0</div></div>
+            <div class="stat"><div class="muted">卡住 / 告警</div><div id="stuckTotal" class="n">0</div></div>
+          </div>
+          <div id="officeGrid" class="office-grid"></div>
+        </div>
+      </section>
+
+      <section class="card half"><div class="hd"><h2>5. 所有角色健康状态</h2><span class="muted">有没有卡住、是否在执行</span></div><div class="bd"><div id="healthList" class="list"></div></div></section>
+      <section class="card half"><div class="hd"><h2>正在进行的任务反馈</h2><span class="muted">看任务有没有往前走</span></div><div class="bd"><div id="taskList" class="list"></div></div></section>
+      <section class="card half"><div class="hd"><h2>记忆文件列表</h2><span id="memoryCountHint" class="muted">读取中</span></div><div class="bd"><div id="memoryFileList" class="list"></div></div></section>
+      <section class="card half"><div id="skillSectionHd" class="hd"><h2>技能列表</h2><div style="display:flex; gap:10px; align-items:center;"><span id="skillCountHint" class="muted">读取中</span></div></div><div id="skillSectionBd" class="bd"><div id="skillList" class="skill-grid"></div></div></section>
+    </div>
+
+    <div class="footer">自动 2 秒刷新一次。激活就高亮，卡住就变红。</div>
+  </div>
+
+  <div id="memoryModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 id="modalFileName">记忆文件</h3>
+        <button class="modal-close" id="modalCloseBtn" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub" style="margin-bottom:10px;color:var(--muted);font-size:13px;">
+          编辑后点击保存，内容立即写回文件。
+        </div>
+        <textarea id="modalFileContent" spellcheck="false"></textarea>
+      </div>
+      <div class="modal-foot">
+        <button class="action-btn" id="modalCancelBtn" type="button" style="border-color:var(--line);background:transparent;">取消</button>
+        <button class="action-btn" id="modalSaveBtn" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const EXEC_SLOTS = 2;
+    const SUB_SLOTS = 4;
+    const FALLBACK_MODELS = ['gpt-5.4', 'gpt-5.5', 'deepseek-v4-flash', 'gpt-5.4-mini'];
+    let selectedModelValue = '';
+    let switchSubmitting = false;
+    const EXEC_FALLBACK_MODELS = ['gpt-5.4', 'gpt-5.5', 'deepseek-v4-flash', 'gpt-5.4-mini'];
+    let execSelectedModelValue = '';
+    let execSwitchSubmitting = false;
+    function badgeClass(kind) { return `pill ${kind}`; }
+    function setBadge(node, text, kind) { node.className = badgeClass(kind); node.textContent = text; }
+    function fmtAgo(iso) {
+      if (!iso) return '无';
+      const diff = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+      if (diff < 60) return `${diff} 秒前`;
+      if (diff < 3600) return `${Math.floor(diff/60)} 分钟前`;
+      return `${Math.floor(diff/3600)} 小时前`;
+    }
+    function getHealth(entity) {
+      const s = entity?.status || '';
+      if (['running', 'starting'].includes(s)) return ['执行中', 'busy'];
+      if (['waiting_approval', 'paused'].includes(s)) return ['等待处理', 'warn'];
+      if (['failed', 'cancelled'].includes(s)) return ['异常/停止', 'bad'];
+      if (['completed'].includes(s)) return ['已完成', 'ok'];
+      return ['空闲', 'idle'];
+    }
+    function isActive(entity) {
+      return entity && ['running', 'starting', 'waiting_approval', 'paused'].includes(entity.status || '');
+    }
+    function isStuck(ts, status) {
+      if (!ts) return false;
+      if (!['running', 'starting', 'waiting_approval', 'paused'].includes(status || '')) return false;
+      return Date.now() - new Date(ts).getTime() > 15000;
+    }
+
+    function renderOffice(workers, subAgents) {
+      const host = el('officeGrid');
+      const activeWorkers = workers.filter((w) => isActive(w));
+      const activeSubs = subAgents.filter((s) => isActive(s));
+      const workersBySlot = new Map();
+      activeWorkers.forEach((w) => {
+        if (w?.slot) workersBySlot.set(w.slot, w);
+      });
+      const subsByWorker = new Map();
+      activeSubs.forEach((s) => {
+        const key = s.workerId || `slot-${s.workerSlot || 'x'}`;
+        const arr = subsByWorker.get(key) || [];
+        arr.push(s);
+        subsByWorker.set(key, arr);
+      });
+
+      const slots = Array.from({ length: EXEC_SLOTS }, (_, i) => workersBySlot.get(i + 1) || null);
+      host.innerHTML = slots.map((worker, idx) => {
+        const workerKey = worker ? (worker.id || `slot-${worker.slot || idx + 1}`) : null;
+        const relatedSubs = workerKey ? (subsByWorker.get(workerKey) || []).slice(0, SUB_SLOTS) : [];
+        const [wLabel, wKind] = worker ? getHealth(worker) : ['待命', 'idle'];
+        const wActive = worker && isActive(worker);
+        const wStuck = worker && isStuck(worker.lastHeartbeatAt, worker.status);
+        const subCards = Array.from({ length: SUB_SLOTS }, (_, subIdx) => {
+          const sub = relatedSubs[subIdx] || null;
+          const [sLabel, sKind] = sub ? getHealth(sub) : ['待命', 'idle'];
+          const sActive = sub && isActive(sub);
+          const sStuck = sub && isStuck(sub.lastHeartbeatAt, sub.status);
+          return `
+            <div class="sub-card ${sStuck ? 'stuck' : sActive ? 'active' : ''}">
+              <div class="sub-title">
+                <div>
+                  <div class="title">${sub ? (sub.role || '子AG') : `子AG ${subIdx + 1}`}</div>
+                  <div class="slot">${sub ? '已激活' : '空槽位'}</div>
+                </div>
+                <span class="pill ${sub ? (sStuck ? 'bad' : sKind) : 'idle'}">${sub ? (sStuck ? '疑似卡住' : sLabel) : '待命'}</span>
+              </div>
+              <div class="sub">实时状态：${sub?.currentStep || '未分配任务'}</div>
+              <div class="sub">技能：${sub?.skill || '--'}</div>
+              <div class="rt">最近心跳：${sub ? fmtAgo(sub.lastHeartbeatAt) : '无'}</div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="hand-card ${wStuck ? 'active' : wActive ? 'active' : ''}">
+            <div class="hand-head">
+              <div>
+                <div class="hand-name">执行手 ${idx + 1}</div>
+                <div class="sub">${worker ? (worker.role || 'executor') : '当前无任务占用'}</div>
+              </div>
+              <span class="pill ${worker ? (wStuck ? 'bad' : wKind) : 'idle'}">${worker ? (wStuck ? '疑似卡住' : wLabel) : '待命'}</span>
+            </div>
+            <div class="hand-meta">
+              <div class="k">实时状态</div><div>${worker?.currentStep || '未分配任务'}</div>
+              <div class="k">任务</div><div class="mono">${worker?.taskId || '--'}</div>
+              <div class="k">技能</div><div>${worker?.currentSkill || '--'}</div>
+              <div class="k">工具</div><div>${worker?.currentTool || '--'}</div>
+              <div class="k">模型池</div><div>${worker?.currentPool?.model || worker?.currentPool?.provider || '--'}</div>
+              <div class="k">最近心跳</div><div>${worker ? fmtAgo(worker.lastHeartbeatAt) : '无'}</div>
+            </div>
+            <div class="sub-grid">${subCards}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderHealth(workers, subAgents) {
+      const host = el('healthList');
+      const roles = [];
+      workers.forEach((w) => roles.push({ type: '执行手', name: w.role || 'executor', id: w.id, status: w.status, step: w.currentStep, heartbeat: w.lastHeartbeatAt, extra: `${w.currentSkill || '-'} / ${w.currentTool || '-'} / ${w.currentPool?.model || w.currentPool?.provider || '-'}` }));
+      subAgents.forEach((a) => roles.push({ type: '子AG', name: a.role || 'sub-agent', id: a.id, status: a.status, step: a.currentStep, heartbeat: a.lastHeartbeatAt, extra: `${a.skill || '-'} / 归属任务 ${a.taskId?.slice(0,8) || '-'}` }));
+      if (!roles.length) {
+        host.innerHTML = '<div class="empty">现在还没有角色在跑活。你从终端下任务后，这里就会亮起来。</div>';
+        return { stuck: 0 };
+      }
+      let stuck = 0;
+      host.innerHTML = roles.map((r) => {
+        const [label, kind] = getHealth(r);
+        const stuckNow = isStuck(r.heartbeat, r.status);
+        if (stuckNow) stuck += 1;
+        return `<div class="item"><div class="top"><div><div class="title">${r.type} · ${r.name}</div><div class="sub mono">${r.id}</div></div><div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><span class="pill ${stuckNow ? 'bad' : kind}">${stuckNow ? '疑似卡住' : label}</span><span class="pill idle">心跳 ${fmtAgo(r.heartbeat)}</span></div></div><div class="sub">当前步骤：${r.step || '无'}</div><div class="sub">细节：${r.extra}</div></div>`;
+      }).join('');
+      return { stuck };
+    }
+
+    function renderTasks(tasks, workersByTask, subByTask) {
+      const host = el('taskList');
+      if (!tasks.length) {
+        host.innerHTML = '<div class="empty">当前没有任务。终端里扔一个任务进来，这里就能看到谁被点亮了。</div>';
+        return;
+      }
+      host.innerHTML = tasks.map((t) => {
+        const workers = workersByTask.get(t.id) || [];
+        const subs = subByTask.get(t.id) || [];
+        const pct = t.status === 'completed' ? 100 : t.status === 'running' ? 65 : t.status === 'waiting_approval' ? 80 : t.status === 'queued' ? 15 : t.status === 'failed' ? 100 : 40;
+        const [label, kind] = t.status === 'queued' ? ['排队中', 'idle'] : t.status === 'running' ? ['执行中', 'busy'] : t.status === 'waiting_approval' ? ['等审批', 'warn'] : t.status === 'completed' ? ['已完成', 'ok'] : t.status === 'failed' ? ['失败', 'bad'] : t.status === 'cancelled' ? ['已取消', 'bad'] : ['未知', 'idle'];
+        return `<div class="item"><div class="top"><div><div class="title">${t.goal || '未命名任务'}</div><div class="sub mono">任务 ${t.id}</div></div><div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><span class="pill ${kind}">${label}</span><span class="pill idle">执行手 ${workers.length}</span><span class="pill idle">子AG ${subs.length}</span></div></div><div class="sub">当前步骤：${t.currentStep || '无'}</div><div class="sub">结果：${t.resultSummary || '还没出结果'}</div><div class="bar"><span style="width:${pct}%"></span></div></div>`;
+      }).join('');
+    }
+
+    function formatBytes(bytes) {
+      const value = Number(bytes || 0);
+      if (!value) return '0 B';
+      if (value < 1024) return `${value} B`;
+      if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+      return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return '--';
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return '--';
+      return date.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function shortText(text, limit = 20) {
+      const raw = String(text || '').trim();
+      if (!raw) return '';
+      return raw.length > limit ? `${raw.slice(0, limit)}…` : raw;
+    }
+
+    function escapeHtml(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function normalizeModelName(value) {
+      if (!value) return '';
+      const raw = String(value).trim();
+      if (!raw) return '';
+      return raw.includes('/') ? raw.split('/').pop() : raw;
+    }
+
+    function getAvailableModels(overview) {
+      const hermesDefault = normalizeModelName(overview?.hermesHost?.config?.modelDefault);
+      const execDefault = normalizeModelName(overview?.embeddedOpenclawExec?.config?.defaultPrimaryModel);
+      return Array.from(new Set([...FALLBACK_MODELS, hermesDefault, execDefault].filter(Boolean)));
+    }
+
+    function renderModelOptions(models, currentModel) {
+      const select = el('modelSelect');
+      const normalizedCurrent = normalizeModelName(currentModel);
+      const normalizedSelected = normalizeModelName(selectedModelValue);
+      const chosen = normalizedSelected || normalizedCurrent || models[0] || '';
+      selectedModelValue = chosen;
+      select.innerHTML = models.length
+        ? models.map((model) => `<option value="${escapeHtml(model)}" ${model === chosen ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('')
+        : '<option value="">暂无模型</option>';
+      select.disabled = !models.length || switchSubmitting;
+    }
+
+    async function submitModelSwitch() {
+      if (switchSubmitting) return;
+      const model = normalizeModelName(el('modelSelect')?.value);
+      if (!model) {
+        el('modelSwitchHint').textContent = '先选个模型，别点空气。';
+        return;
+      }
+      switchSubmitting = true;
+      const btn = el('modelSwitchBtn');
+      const select = el('modelSelect');
+      btn.disabled = true;
+      select.disabled = true;
+      btn.textContent = '切换中...';
+      el('modelSwitchHint').textContent = `正在写入配置文件：${model}`;
+      try {
+        const res = await fetch('/api/switch-hermes-model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        selectedModelValue = model;
+        el('modelSwitchHint').textContent = `已物理切换至 ${model}（下次新会话生效）`;
+        load();
+      } catch (err) {
+        el('modelSwitchHint').textContent = `切换失败：${err.message}`;
+      } finally {
+        switchSubmitting = false;
+        btn.disabled = false;
+        select.disabled = false;
+        btn.textContent = '切换';
+      }
+    }
+
+    function renderExecModelOptions(execCurrentModel) {
+      const select = el('execModelSelect');
+      const normalizedCurrent = normalizeModelName(execCurrentModel);
+      const normalizedSelected = normalizeModelName(execSelectedModelValue);
+      const chosen = normalizedSelected || normalizedCurrent || EXEC_FALLBACK_MODELS[0] || '';
+      execSelectedModelValue = chosen;
+      select.innerHTML = EXEC_FALLBACK_MODELS.length
+        ? EXEC_FALLBACK_MODELS.map((model) => `<option value="${escapeHtml(model)}" ${model === chosen ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('')
+        : '<option value="">暂无模型</option>';
+      select.disabled = !EXEC_FALLBACK_MODELS.length || execSwitchSubmitting;
+    }
+
+    async function submitExecModelSwitch() {
+      if (execSwitchSubmitting) return;
+      const model = normalizeModelName(el('execModelSelect')?.value);
+      if (!model) {
+        el('execModelSwitchHint').textContent = '先选个模型，别点空气。';
+        return;
+      }
+      execSwitchSubmitting = true;
+      const btn = el('execModelSwitchBtn');
+      const select = el('execModelSelect');
+      btn.disabled = true;
+      select.disabled = true;
+      btn.textContent = '切换中...';
+      el('execModelSwitchHint').textContent = `正在写入配置文件：${model}`;
+      try {
+        const res = await fetch('/api/switch-exec-model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        execSelectedModelValue = model;
+        el('execModelSwitchHint').textContent = `已物理切换执行手模型至 ${model}`;
+        load();
+      } catch (err) {
+        el('execModelSwitchHint').textContent = `提交失败：${err.message}`;
+      } finally {
+        execSwitchSubmitting = false;
+        btn.disabled = false;
+        select.disabled = false;
+        btn.textContent = '切换';
+      }
+    }
+
+    let modalFileName = '';
+    function openMemoryModal(name) {
+      modalFileName = name;
+      el('modalFileName').textContent = `记忆文件 · ${name}`;
+      el('modalFileContent').value = '加载中...';
+      el('memoryModal').classList.add('open');
+      fetch(`/api/memories/content?name=${encodeURIComponent(name)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!data.ok) throw new Error(data.error || '读取失败');
+          el('modalFileContent').value = data.content || '';
+        })
+        .catch((err) => {
+          el('modalFileContent').value = `读取失败：${err.message}`;
+        });
+    }
+    function closeMemoryModal() {
+      el('memoryModal').classList.remove('open');
+    }
+    async function saveMemoryModal() {
+      const content = el('modalFileContent').value;
+      try {
+        const res = await fetch('/api/memories/content', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: modalFileName, content })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '保存失败');
+        closeMemoryModal();
+        await load();
+      } catch (err) {
+        el('modalFileContent').value = `保存失败：${err.message}\n\n` + el('modalFileContent').value;
+      }
+    }
+
+    function memoryNote(file) {
+      const name = (file.name || '').replace(/\.md$/i, '');
+      if (file.description && file.description !== '记忆文档') return file.description;
+      return `记忆条目 · ${name.replace(/[-_]/g, ' ')}`;
+    }
+
+    function renderMemories(files) {
+      const host = el('memoryFileList');
+      el('memoryCountHint').textContent = `共 ${files.length} 个文件`;
+      if (!files.length) {
+        host.innerHTML = '<div class="empty">还没扫到记忆文件。</div>';
+        return;
+      }
+      host.innerHTML = files.map((file) => `
+        <div class="item">
+          <div class="top">
+            <div>
+              <button class="memory-name-btn" type="button" data-name="${escapeHtml(file.name || '')}">${escapeHtml(file.name || '未命名文件')}</button>
+              <div class="sub mono">${escapeHtml(file.path || file.name || '--')}</div>
+            </div>
+            <span class="pill ok">记忆文件</span>
+          </div>
+          <div class="sub" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(memoryNote(file))}</div>
+          <div class="meta-row">
+            <span class="tag">大小 ${formatBytes(file.bytes)}</span>
+            <span class="tag">更新 ${fmtTime(file.updatedAt)}</span>
+          </div>
+        </div>
+      `).join('');
+      // 事件委托：点击记忆文件列表容器，匹配 .memory-name-btn 按钮
+      if (!host._delegated) {
+        host.addEventListener('click', (e) => {
+          const btn = e.target.closest('.memory-name-btn');
+          if (btn) openMemoryModal(btn.dataset.name);
+        });
+        host._delegated = true;
+      }
+    }
+
+    function renderSkills(skills) {
+      const host = el('skillList');
+      el('skillCountHint').textContent = `共 ${skills.length} 个技能`;
+      if (!skills.length) {
+        host.innerHTML = '<div class="empty">当前没扫到技能。</div>';
+        return;
+      }
+      host.innerHTML = skills.map((skill) => `
+        <div class="skill-mini">
+          <div class="mini-title">${escapeHtml(skill.emoji || '🧩')} ${escapeHtml(skill.name || '未命名技能')}</div>
+          <div class="mini-desc">${escapeHtml(skill.description || '暂无描述')}</div>
+          <div class="meta-row">
+            <span class="tag">${escapeHtml(skill.source || '--')}</span>
+            <span class="tag">${skill.disabled ? '禁用' : '可用'}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function load() {
+      try {
+        const [overviewRes, subRes, memoryRes, skillRes] = await Promise.all([
+          fetch('/api/overview'),
+          fetch('/api/subagents'),
+          fetch('/api/memories'),
+          fetch('/api/skills')
+        ]);
+        const overview = await overviewRes.json();
+        const subData = await subRes.json();
+        const memoryData = await memoryRes.json();
+        const skillData = await skillRes.json();
+        const hermes = overview.hermesHost || {};
+        const exec = overview.embeddedOpenclawExec || {};
+        const runtime = overview.runtime || {};
+        const tasks = runtime.tasks || [];
+        const workers = runtime.workers || [];
+        const subAgents = subData.subAgents || [];
+        const memoryFiles = Array.isArray(memoryData)
+          ? memoryData.filter((item) => item && typeof item === 'object' && 'name' in item)
+          : (Array.isArray(memoryData?.files) ? memoryData.files : []);
+        const skills = Array.isArray(skillData?.skills) ? skillData.skills : [];
+        const modelOptions = getAvailableModels(overview);
+
+        el('lastRefresh').textContent = `最近刷新：${new Date().toLocaleTimeString('zh-CN')}`;
+        setBadge(el('hermesBadge'), '在线', 'ok');
+        el('hermesHome').textContent = hermes.home || '--';
+        el('hermesModel').textContent = `${hermes.config?.modelProvider || '-'} / ${hermes.config?.modelDefault || '-'}`;
+        el('hermesReasoning').textContent = hermes.config?.reasoning || '--';
+        el('hermesSkillCount').textContent = hermes.skillCount ?? '--';
+        el('hermesMemoryCount').textContent = hermes.memory?.files?.length ?? 0;
+        const gMode = exec.config?.gatewayMode || 'unknown';
+        const gAuth = exec.config?.authMode || 'unknown';
+        setBadge(el('gatewayBadge'), gMode === 'internal-exec-only' ? '内部执行模式' : gMode, gMode === 'internal-exec-only' ? 'ok' : 'warn');
+        el('gatewayMode').textContent = gMode;
+        el('gatewayAuth').textContent = gAuth;
+        el('gatewayEntry').textContent = 'Hermes';
+        el('gatewayPort').textContent = '24318';
+        el('gatewayWs').textContent = '/ws';
+
+        setBadge(el('execBadge'), exec.config?.exists ? '已挂上' : '未挂上', exec.config?.exists ? 'ok' : 'bad');
+        el('execMode').textContent = exec.config?.gatewayMode || '--';
+        el('execModel').textContent = exec.config?.defaultPrimaryModel || '--';
+        el('execProviders').textContent = exec.config?.providerCount ?? '--';
+        el('execModels').textContent = exec.config?.modelCount ?? '--';
+        el('execReuse').textContent = exec.reusedSource?.reusesSkillScanner ? '已复用 OpenClaw 技能扫描' : '未复用';
+        renderModelOptions(modelOptions, hermes.config?.modelDefault);
+        renderExecModelOptions(exec.config?.defaultPrimaryModel);
+        if (!switchSubmitting) {
+          el('modelSwitchBtn').disabled = !modelOptions.length;
+        }
+
+        const workersByTask = new Map();
+        workers.forEach((w) => { const arr = workersByTask.get(w.taskId) || []; arr.push(w); workersByTask.set(w.taskId, arr); });
+        const subByTask = new Map();
+        subAgents.forEach((s) => { const arr = subByTask.get(s.taskId) || []; arr.push(s); subByTask.set(s.taskId, arr); });
+
+        renderOffice(workers, subAgents);
+        const stuckInfo = renderHealth(workers, subAgents);
+        renderTasks(tasks, workersByTask, subByTask);
+        renderMemories(memoryFiles);
+        renderSkills(skills);
+
+        el('taskTotal').textContent = tasks.length;
+        el('workerTotal').textContent = workers.length;
+        el('subAgentTotal').textContent = subAgents.length;
+        el('stuckTotal').textContent = stuckInfo.stuck;
+        setBadge(el('runtimeBadge'), tasks.some(t => t.status === 'running' || t.status === 'waiting_approval') ? '有任务在跑' : '当前空闲', tasks.some(t => t.status === 'running') ? 'busy' : tasks.some(t => t.status === 'waiting_approval') ? 'warn' : 'idle');
+      } catch (err) {
+        setBadge(el('hermesBadge'), '读取失败', 'bad');
+        setBadge(el('gatewayBadge'), '读取失败', 'bad');
+        setBadge(el('execBadge'), '读取失败', 'bad');
+        setBadge(el('runtimeBadge'), '读取失败', 'bad');
+        el('officeGrid').innerHTML = `<div class="empty">状态拉取失败：${err.message}</div>`;
+        el('healthList').innerHTML = `<div class="empty">状态拉取失败：${err.message}</div>`;
+        el('taskList').innerHTML = '<div class="empty">状态拉取失败，没法给你看任务反馈。</div>';
+        el('memoryFileList').innerHTML = '<div class="empty">记忆文件读取失败。</div>';
+        el('skillList').innerHTML = '<div class="empty">技能列表读取失败。</div>';
+        el('modelSelect').innerHTML = '<option value="">读取失败</option>';
+        el('modelSelect').disabled = true;
+        el('modelSwitchBtn').disabled = true;
+        el('modelSwitchHint').textContent = `模型列表读取失败：${err.message}`;
+        el('memoryCountHint').textContent = '读取失败';
+        el('skillCountHint').textContent = '读取失败';
+      }
+    }
+
+    load();
+    el('modelSelect').addEventListener('change', (event) => {
+      selectedModelValue = normalizeModelName(event.target.value);
+    });
+    el('execModelSelect').addEventListener('change', (event) => {
+      execSelectedModelValue = normalizeModelName(event.target.value);
+    });
+    el('modelSwitchBtn').addEventListener('click', submitModelSwitch);
+    el('execModelSwitchBtn').addEventListener('click', submitExecModelSwitch);
+    el('modelTestBtn').addEventListener('click', async () => {
+      const model = normalizeModelName(el('modelSelect')?.value) || 'deepseek-v4-flash';
+      const btn = el('modelTestBtn');
+      const hint = el('modelSwitchHint');
+      btn.disabled = true; btn.textContent = '测试中…'; hint.textContent = `正在测试 ${model} ...`;
+      try {
+        const res = await fetch('/api/test-hermes-model', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model })
+        });
+        const d = await res.json();
+        hint.textContent = d.ok ? `✓ ${model} 正常 (${d.baseUrl})` : `✗ ${d.error}`;
+        hint.style.color = d.ok ? 'var(--ok)' : 'var(--bad)';
+      } catch (err) { hint.textContent = `✗ 测试失败: ${err.message}`; hint.style.color = 'var(--bad)'; }
+      finally { btn.disabled = false; btn.textContent = '测试'; }
+    });
+    el('execModelTestBtn').addEventListener('click', async () => {
+      const model = normalizeModelName(el('execModelSelect')?.value) || 'deepseek-v4-flash';
+      const btn = el('execModelTestBtn');
+      const hint = el('execModelSwitchHint');
+      btn.disabled = true; btn.textContent = '测试中…'; hint.textContent = `正在测试执行手 ${model} ...`;
+      try {
+        const res = await fetch('/api/test-exec-model', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model })
+        });
+        const d = await res.json();
+        hint.textContent = d.ok ? `✓ 执行手 ${model} 正常 (${d.baseUrl})` : `✗ ${d.error}`;
+        hint.style.color = d.ok ? 'var(--ok)' : 'var(--bad)';
+      } catch (err) { hint.textContent = `✗ 测试失败: ${err.message}`; hint.style.color = 'var(--bad)'; }
+      finally { btn.disabled = false; btn.textContent = '测试'; }
+    });
+    el('restartGatewayBtn').addEventListener('click', async () => {
+      const btn = el('restartGatewayBtn');
+      btn.disabled = true;
+      btn.textContent = '重启中…';
+      try {
+        await fetch('/api/restart-gateway', { method: 'POST' });
+        // 服务器会重启，这里捕捉不到成功响应
+      } catch { /* 预期内：服务器断开 */ }
+      setTimeout(() => {
+        btn.textContent = '重启网关';
+        btn.disabled = false;
+        load();
+      }, 3000);
+    });
+    el('modalCloseBtn').addEventListener('click', closeMemoryModal);
+    el('modalCancelBtn').addEventListener('click', closeMemoryModal);
+    el('modalSaveBtn').addEventListener('click', saveMemoryModal);
+    el('memoryModal').addEventListener('click', (e) => {
+      if (e.target === el('memoryModal')) closeMemoryModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && el('memoryModal').classList.contains('open')) closeMemoryModal();
+    });
+    setInterval(load, 2000);
+  </script>
+</body>
+</html>

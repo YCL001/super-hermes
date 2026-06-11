@@ -1,0 +1,8 @@
+# 统一行尾 — 源码用 LF，批处理用 CRLF
+*.mjs    text eol=lf
+*.html   text eol=lf
+*.json   text eol=lf
+*.sh     text eol=lf
+*.md     text eol=lf
+.bat     text eol=crlf
+.gitignore text eol=lf

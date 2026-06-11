@@ -1,0 +1,6 @@
+node_modules/
+logs/
+data/hermes-home/.env
+data/hermes-home/memories/
+data/hermes-home/skills/
+data/openclaw-home/
