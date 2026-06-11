@@ -565,12 +565,13 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && pathname === '/api/restart-gateway') {
       // 启动新进程后再关闭当前进程
-      const script = path.resolve('ui-cockpit/server.mjs');
+      const script = path.resolve('scripts/cockpit.mjs');
+      const hermesHome = path.join(PROJECT_DIR, 'data', 'hermes-home');
       const newProc = spawn('node', [script], {
         cwd: PROJECT_DIR,
         detached: true,
         stdio: 'ignore',
-        env: { ...process.env },
+        env: { ...process.env, HERMES_HOME: hermesHome, HERMES_LOG_DIR: path.join(hermesHome, 'logs') },
       });
       newProc.unref();
       // 先给前端响应，再关当前进程

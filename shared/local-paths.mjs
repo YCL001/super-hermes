@@ -9,12 +9,21 @@ export const LOCAL_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'local-dev.js
 
 function defaultConfig() {
   return {
+    rules: {
+      host_protection: true,
+      forbid_touching_host_files: true,
+      forbid_touching_host_processes: true,
+      forbid_touching_host_ports: true,
+    },
     paths: {
       hermes_home: 'data/hermes-home',
       openclaw_home: 'data/openclaw-home',
       skills_dir: 'data/hermes-home/skills',
       memories_dir: 'data/hermes-home/memories',
       openclaw_review: 'reused/openclaw-review',
+    },
+    ports: {
+      fusion_panel: 24318,
     },
   };
 }

@@ -4,7 +4,7 @@
   "description": "Fusion 融合面板 — Hermes + OpenClaw 统一执行面板",
   "type": "module",
   "scripts": {
-    "cockpit": "node ui-cockpit/server.mjs",
+    "cockpit": "node scripts/cockpit.mjs",
     "check": "node scripts/check.mjs",
     "status": "curl -s http://127.0.0.1:24318/api/overview"
   },

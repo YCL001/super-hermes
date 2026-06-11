@@ -176,6 +176,9 @@
       border: 1px solid var(--line); border-radius: 18px; padding: 16px; transition: .18s ease;
     }
     .hand-card.active { border-color: rgba(96,165,250,.45); box-shadow: var(--active-glow); background: linear-gradient(180deg, rgba(23,42,78,.98), rgba(18,25,50,.98)); }
+    .brain-card { grid-column: 1 / -1; border-color: rgba(168,85,247,.38); background: linear-gradient(180deg, rgba(50,32,84,.92), rgba(22,25,55,.96)); }
+    .brain-card.active { border-color: rgba(216,180,254,.55); box-shadow: 0 0 0 1px rgba(168,85,247,.28), 0 0 22px rgba(168,85,247,.22); }
+    .brain-badge { background: rgba(168,85,247,.18); border-color: rgba(216,180,254,.35); }
     .hand-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 12px; }
     .hand-name { font-size: 20px; font-weight: 800; }
     .hand-meta { display:grid; grid-template-columns: 82px 1fr; gap: 8px 10px; font-size: 13px; margin-bottom: 14px; }
@@ -336,10 +339,31 @@
       return Date.now() - new Date(ts).getTime() > 15000;
     }
 
-    function renderOffice(workers, subAgents) {
+    function renderOffice(workers, subAgents, tasks = []) {
       const host = el('officeGrid');
       const activeWorkers = workers.filter((w) => isActive(w));
       const activeSubs = subAgents.filter((s) => isActive(s));
+      const activeTasks = tasks.filter((t) => isActive(t));
+      const latestTask = activeTasks[0] || tasks[0] || null;
+      const brainActive = activeTasks.length > 0;
+      const brainCard = `
+          <div class="hand-card brain-card ${brainActive ? 'active' : ''}">
+            <div class="hand-head">
+              <div>
+                <div class="hand-name">主 Hermes / 主脑</div>
+                <div class="sub">负责对话、理解需求、拆任务、派执行手、验收结果</div>
+              </div>
+              <span class="pill ${brainActive ? 'busy brain-badge' : 'idle'}">${brainActive ? '工作中' : '待命'}</span>
+            </div>
+            <div class="hand-meta">
+              <div class="k">实时状态</div><div>${latestTask?.currentStep || (brainActive ? '正在调度任务' : '等待用户指令')}</div>
+              <div class="k">当前任务</div><div class="mono">${latestTask?.id || '--'}</div>
+              <div class="k">主职责</div><div>对话 / 拆解 / 派单 / 审批 / 验收</div>
+              <div class="k">工作方式</div><div>终端主入口，面板只做监控</div>
+              <div class="k">运行状态</div><div>${brainActive ? `正在跟进 ${activeTasks.length} 个任务` : '空闲'}</div>
+            </div>
+          </div>
+        `;
       const workersBySlot = new Map();
       activeWorkers.forEach((w) => {
         if (w?.slot) workersBySlot.set(w.slot, w);
@@ -353,7 +377,7 @@
       });
 
       const slots = Array.from({ length: EXEC_SLOTS }, (_, i) => workersBySlot.get(i + 1) || null);
-      host.innerHTML = slots.map((worker, idx) => {
+      host.innerHTML = brainCard + slots.map((worker, idx) => {
         const workerKey = worker ? (worker.id || `slot-${worker.slot || idx + 1}`) : null;
         const relatedSubs = workerKey ? (subsByWorker.get(workerKey) || []).slice(0, SUB_SLOTS) : [];
         const [wLabel, wKind] = worker ? getHealth(worker) : ['待命', 'idle'];
@@ -783,7 +807,7 @@
         const subByTask = new Map();
         subAgents.forEach((s) => { const arr = subByTask.get(s.taskId) || []; arr.push(s); subByTask.set(s.taskId, arr); });
 
-        renderOffice(workers, subAgents);
+        renderOffice(workers, subAgents, tasks);
         const stuckInfo = renderHealth(workers, subAgents);
         renderTasks(tasks, workersByTask, subByTask);
         renderMemories(memoryFiles);

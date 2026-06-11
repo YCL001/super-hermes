@@ -137,7 +137,7 @@ export async function executeTask(task, worker, sched) {
       }, 3000);
 
       const hermesCmd = process.platform === 'win32' ? 'hermes.exe' : 'hermes';
-      const hermesHome = process.env.HERMES_HOME || path.join(process.cwd(), 'data', 'hermes-home');
+      const hermesHome = path.join(process.cwd(), 'data', 'hermes-home');
       const execState = readExecConfigState();
       const execProviderName = execState.providerName || 'deepseek';
       const execProvider = execProviderName.includes(':') || execProviderName === 'deepseek'
@@ -151,7 +151,7 @@ export async function executeTask(task, worker, sched) {
           {
             timeout: 180000,
             maxBuffer: 10 * 1024 * 1024,
-            env: { ...process.env, HERMES_HOME: hermesHome },
+            env: { ...process.env, HERMES_HOME: hermesHome, HERMES_LOG_DIR: path.join(hermesHome, 'logs') },
           },
           (error, stdout, stderr) => {
             clearInterval(hbInterval);

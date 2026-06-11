@@ -6,8 +6,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $env:HERMES_HOME = Join-Path $projectRoot 'data\hermes-home'
+$env:HERMES_LOG_DIR = Join-Path $env:HERMES_HOME 'logs'
 $frontendUrl = 'http://127.0.0.1:24318/'
-$frontendCommand = "Set-Location '$projectRoot'; node .\ui-cockpit\server.mjs"
+$frontendCommand = "Set-Location '$projectRoot'; `$env:HERMES_HOME='$env:HERMES_HOME'; `$env:HERMES_LOG_DIR='$env:HERMES_LOG_DIR'; node .\scripts\cockpit.mjs"
 
 Write-Host '1/3 启动前端服务' -ForegroundColor Yellow
 Start-Process powershell -WindowStyle Normal -ArgumentList @(

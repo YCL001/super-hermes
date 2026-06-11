@@ -59,7 +59,12 @@ echo   需要你提供 API 信息，至少配一个服务商。
 echo   每个服务商需要：名称、接口地址、密钥、可用模型。
 echo.
 
-mkdir data\hermes-home data\openclaw-home config 2>nul
+mkdir data\hermes-home\logs data\hermes-home\memories data\hermes-home\skills data\openclaw-home config logs 2>nul
+
+if exist "data\hermes-home\.env" if exist "data\hermes-home\config.yaml" if exist "data\openclaw-home\openclaw.json" (
+  echo   配置已存在，保留 .env / config.yaml / openclaw.json
+  goto config_done
+)
 
 rem 用 PowerShell 脚本处理交互 + 写配置（YAML/JSON 用 PS 写更稳）
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -95,7 +100,8 @@ $first = $providers[0]; ^
 $firstModel = $first.models[0]; ^
 $yamlLines += 'model:'; ^
 $yamlLines += ('  default: ' + $firstModel); ^
-$yamlLines += ('  provider: ' + $first.name); ^
+if ($first.name -eq 'deepseek') { $hermesProvider = $first.name } else { $hermesProvider = 'custom:' + $first.name }; ^
+$yamlLines += ('  provider: ' + $hermesProvider); ^
 $yamlLines += ('  base_url: ' + $first.url); ^
 $yamlLines += 'providers:'; ^
 foreach ($p in $providers) { ^
@@ -139,7 +145,8 @@ Write-Host ''
 
 if %errorlevel% neq 0 (echo   配置写入失败 & pause & exit /b 1)
 
-mkdir data\hermes-home\memories data\hermes-home\skills logs 2>nul
+:config_done
+mkdir data\hermes-home\logs data\hermes-home\memories data\hermes-home\skills logs 2>nul
 
 rem 初始化记忆索引
 powershell -NoProfile -Command ^

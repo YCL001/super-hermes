@@ -44,79 +44,94 @@ echo '[4/5] 安装 npm 依赖'
 npm install --silent
 echo '  OK 依赖安装完成'
 
-# 5. 配置 API Provider（交互式）
-echo '[5/5] 配置 API 服务商'
-echo ''
-echo '  需要你提供 API 信息，至少配一个服务商。'
-echo '  每个服务商需要：名称、接口地址、密钥、可用模型。'
-echo ''
+mkdir -p data/hermes-home/logs data/hermes-home/memories data/hermes-home/skills data/openclaw-home config logs
 
-mkdir -p data/hermes-home data/openclaw-home config
+need_provider_input=false
+if [ ! -f data/hermes-home/.env ] || [ ! -f data/hermes-home/config.yaml ] || [ ! -f data/openclaw-home/openclaw.json ]; then
+  need_provider_input=true
+fi
 
-# ── 收集用户输入 ──
-PROVIDERS=()
-INDEX=1
-while true; do
-  echo "  ── 服务商 $INDEX ──"
+if [ "$need_provider_input" = true ]; then
+  # 5. 配置 API Provider（交互式）
+  echo '[5/5] 配置 API 服务商'
   echo ''
-  read -rp "  名称 (如 deepseek/gs88/openai): " P_NAME
-  [ -z "$P_NAME" ] && { echo '  名称不能为空'; continue; }
-  read -rp "  接口地址 (如 https://api.deepseek.com): " P_URL
-  [ -z "$P_URL" ] && { echo '  URL 不能为空'; continue; }
-  read -rp "  密钥: " P_KEY
-  [ -z "$P_KEY" ] && { echo '  密钥不能为空'; continue; }
-  echo '  API 类型:'
-  echo '    1) openai-completions  — 标准 Chat Completions (DeepSeek 等)'
-  echo '    2) openai-responses    — Responses API (GS88 中转等)'
-  read -rp "  选一个 (默认 1): " P_API_TYPE
-  [ -z "$P_API_TYPE" ] && P_API_TYPE=1
-  [ "$P_API_TYPE" = "2" ] && P_API="openai-responses" || P_API="openai-completions"
-  read -rp "  模型列表 (逗号分隔, 如 deepseek-v4-flash,gpt-5.5): " P_MODELS
-  [ -z "$P_MODELS" ] && { echo '  模型不能为空'; continue; }
+  echo '  需要你提供 API 信息，至少配一个服务商。'
+  echo '  每个服务商需要：名称、接口地址、密钥、可用模型。'
+  echo ''
 
-  PROVIDERS+=("$P_NAME|$P_URL|$P_KEY|$P_API|$P_MODELS")
+  PROVIDERS=()
+  INDEX=1
+  while true; do
+    echo "  ── 服务商 $INDEX ──"
+    echo ''
+    read -rp "  名称 (如 deepseek/gs88/openai): " P_NAME
+    [ -z "$P_NAME" ] && { echo '  名称不能为空'; continue; }
+    read -rp "  接口地址 (如 https://api.deepseek.com): " P_URL
+    [ -z "$P_URL" ] && { echo '  接口地址不能为空'; continue; }
+    read -rp "  密钥: " P_KEY
+    [ -z "$P_KEY" ] && { echo '  密钥不能为空'; continue; }
+    echo '  API 类型:'
+    echo '    1) openai-completions  — 标准 Chat Completions (DeepSeek 等)'
+    echo '    2) openai-responses    — Responses API (GS88 中转等)'
+    read -rp "  选一个 (默认 1): " P_API_TYPE
+    [ -z "$P_API_TYPE" ] && P_API_TYPE=1
+    [ "$P_API_TYPE" = "2" ] && P_API="openai-responses" || P_API="openai-completions"
+    read -rp "  模型列表 (逗号分隔, 如 deepseek-v4-flash,gpt-5.5): " P_MODELS
+    [ -z "$P_MODELS" ] && { echo '  模型不能为空'; continue; }
 
-  if [ $INDEX -ge 2 ]; then
-    read -rp "  还要配下一个吗? (y/n): " MORE
-    [ "$MORE" != "y" ] && break
+    PROVIDERS+=("$P_NAME|$P_URL|$P_KEY|$P_API|$P_MODELS")
+
+    if [ $INDEX -ge 2 ]; then
+      read -rp "  还要配下一个吗? (y/n): " MORE
+      [ "$MORE" != "y" ] && break
+    else
+      read -rp "  还要配第 2 个吗? (y/n): " MORE
+      [ "$MORE" != "y" ] && break
+    fi
+    INDEX=$((INDEX + 1))
+  done
+
+  echo ''
+  echo '  正在生成配置文件...'
+
+  # ── 写 .env（存在则不覆盖） ──
+  ENV_FILE="data/hermes-home/.env"
+  if [ ! -f "$ENV_FILE" ]; then
+    : > "$ENV_FILE"
+    for entry in "${PROVIDERS[@]}"; do
+      IFS='|' read -r name url key api models <<< "$entry"
+      upper_name=$(echo "$name" | tr '[:lower:]' '[:upper:]')
+      echo "${upper_name}_API_KEY=$key" >> "$ENV_FILE"
+    done
+    echo "  ✓ $ENV_FILE"
   else
-    read -rp "  还要配第 2 个吗? (y/n): " MORE
-    [ "$MORE" != "y" ] && break
+    echo "  保留已有 $ENV_FILE"
   fi
-  INDEX=$((INDEX + 1))
-done
 
-echo ''
-echo '  正在生成配置文件...'
+  # ── 写 Hermes config.yaml（存在则不覆盖） ──
+  YAML_FILE="data/hermes-home/config.yaml"
+  if [ ! -f "$YAML_FILE" ]; then
+    FIRST_PROVIDER="${PROVIDERS[0]}"
+    IFS='|' read -r firstName firstUrl firstKey firstApi firstModels <<< "$FIRST_PROVIDER"
+    firstModel=$(echo "$firstModels" | cut -d',' -f1 | xargs)
 
-# ── 写 .env ──
-ENV_FILE="data/hermes-home/.env"
-> "$ENV_FILE"
-for entry in "${PROVIDERS[@]}"; do
-  IFS='|' read -r name url key models <<< "$entry"
-  upper_name=$(echo "$name" | tr '[:lower:]' '[:upper:]')
-  echo "${upper_name}_API_KEY=***" >> "$ENV_FILE"
-done
-echo "  ✓ $ENV_FILE"
+    hermesProvider="$firstName"
+    if [ "$firstName" != "deepseek" ]; then
+      hermesProvider="custom:$firstName"
+    fi
 
-# ── 写 Hermes config.yaml ──
-YAML_FILE="data/hermes-home/config.yaml"
-FIRST_PROVIDER="${PROVIDERS[0]}"
-IFS='|' read -r firstName firstUrl firstKey firstModels <<< "$FIRST_PROVIDER'
-firstModel=$(echo "$firstModels" | cut -d',' -f1 | xargs)
-
-cat > "$YAML_FILE" <<YAML
+    cat > "$YAML_FILE" <<YAML
 model:
   default: $firstModel
-  provider: $firstName
+  provider: $hermesProvider
   base_url: $firstUrl
 providers:
 YAML
 
-for entry in "${PROVIDERS[@]}"; do
-  IFS='|' read -r name url key api models <<< "$entry"
-  models_list=$(echo "$models" | tr ',' ' ')
-  cat >> "$YAML_FILE" <<YAML
+    for entry in "${PROVIDERS[@]}"; do
+      IFS='|' read -r name url key api models <<< "$entry"
+      models_list=$(echo "$models" | tr ',' ' ')
+      cat >> "$YAML_FILE" <<YAML
   $name:
     name: $name
     api: $url/v1
@@ -124,70 +139,91 @@ for entry in "${PROVIDERS[@]}"; do
     default_model: $(echo "$models_list" | awk '{print $1}')
     models:
 YAML
-  for m in $models_list; do
-    echo "      $m: {}" >> "$YAML_FILE"
-  done
-  echo "    discover_models: false" >> "$YAML_FILE"
-done
+      for m in $models_list; do
+        echo "      $m: {}" >> "$YAML_FILE"
+      done
+      echo "    discover_models: false" >> "$YAML_FILE"
+      if [ "$api" = "openai-responses" ]; then
+        echo "    transport: codex_responses" >> "$YAML_FILE"
+      fi
+    done
 
-cat >> "$YAML_FILE" <<YAML
+    cat >> "$YAML_FILE" <<YAML
 agent:
   max_turns: 60
 terminal:
   backend: local
   timeout: 180
 YAML
-echo "  ✓ $YAML_FILE"
+    echo "  ✓ $YAML_FILE"
+  else
+    echo "  保留已有 $YAML_FILE"
+  fi
 
-# ── 写 OpenClaw openclaw.json ──
-OC_FILE="data/openclaw-home/openclaw.json"
+  # ── 写 OpenClaw openclaw.json（存在则不覆盖） ──
+  OC_FILE="data/openclaw-home/openclaw.json"
+  if [ ! -f "$OC_FILE" ]; then
+    FIRST_PROVIDER="${PROVIDERS[0]}"
+    IFS='|' read -r firstName firstUrl firstKey firstApi firstModels <<< "$FIRST_PROVIDER"
+    firstModel=$(echo "$firstModels" | cut -d',' -f1 | xargs)
+    firstFull="${firstName}/${firstModel}"
+
+    {
+      echo '{'
+      echo '  "gateway": { "mode": "internal-exec-only", "auth": { "mode": "disabled" } },'
+      echo '  "agents": { "defaults": { "models": {}, "model": { "primary": "'"$firstFull"'" } } },'
+      echo '  "models": { "mode": "merge", "providers": {'
+      FIRST=true
+      for entry in "${PROVIDERS[@]}"; do
+        IFS='|' read -r name url key api models <<< "$entry"
+        $FIRST || echo ','
+        FIRST=false
+        echo -n "      \"$name\": { \"baseUrl\": \"$url\", \"api\": \"$api\", \"apiKey\": \"$key\", \"models\": ["
+        IFS=',' read -ra model_arr <<< "$models"
+        for i in "${!model_arr[@]}"; do
+          [ $i -gt 0 ] && echo -n ','
+          m=$(echo "${model_arr[$i]}" | xargs)
+          echo -n "{\"id\":\"$m\",\"name\":\"$m\",\"contextWindow\":1000000}"
+        done
+        echo -n '] }'
+      done
+      echo ''
+      echo '    } },'
+      echo '  "auth": { "profiles": {} },'
+      echo '  "plugins": { "entries": {}, "allow": [] }'
+      echo '}'
+    } > "$OC_FILE"
+    echo "  ✓ $OC_FILE"
+  else
+    echo "  保留已有 $OC_FILE"
+  fi
+
+  # ── 写 config/local-dev.json（存在则不覆盖） ──
+  if [ ! -f config/local-dev.json ]; then
+    cat > config/local-dev.json <<'EOF'
 {
-  echo '{'
-  echo '  "gateway": { "mode": "internal-exec-only", "auth": { "mode": "disabled" } },'
-  echo '  "agents": { "defaults": { "models": {}, "model": { "primary": "" } } },'
-  echo '  "models": { "mode": "merge", "providers": {'
-  FIRST=true
-  for entry in "${PROVIDERS[@]}"; do
-    IFS='|' read -r name url key api models <<< "$entry"
-    $FIRST || echo ','
-    FIRST=false
-    echo -n "      \"$name\": { \"baseUrl\": \"$url\", \"api\": \"$api\", \"apiKey\": \"$key\", \"models\": ["
-    IFS=',' read -ra model_arr <<< "$models"
-    for i in "${!model_arr[@]}"; do
-      [ $i -gt 0 ] && echo -n ','
-      m=$(echo "${model_arr[$i]}" | xargs)
-      echo -n "{\"id\":\"$m\",\"name\":\"$m\",\"contextWindow\":1000000}"
-    done
-    echo '] }'
-  done
-  echo '    } },'
-  echo '  "auth": { "profiles": {} },'
-  echo '  "plugins": { "entries": {}, "allow": [] }'
-  echo '}'
-} > "$OC_FILE"
-
-# 更新 primary model
-firstFull="${firstName}/${firstModel}"
-python3 -c "
-import json
-with open('$OC_FILE','r') as f: oc=json.load(f)
-oc['agents']['defaults']['model']['primary']='$firstFull'
-with open('$OC_FILE','w') as f: json.dump(oc,f,indent=2)
-" 2>/dev/null || echo "  (primary model set to $firstFull)"
-
-echo "  ✓ $OC_FILE"
-
-# ── 写 config/local-dev.json ──
-cat > config/local-dev.json <<'EOF'
-{
-  "rules": { "host_protection": true, "forbid_touching_host_files": true, "forbid_touching_host_processes": true, "forbid_touching_host_ports": true },
-  "paths": { "hermes_home": "data/hermes-home", "openclaw_home": "data/openclaw-home", "memories_dir": "data/hermes-home/memories", "skills_dir": "data/hermes-home/skills" },
+  "rules": {
+    "host_protection": true,
+    "forbid_touching_host_files": true,
+    "forbid_touching_host_processes": true,
+    "forbid_touching_host_ports": true
+  },
+  "paths": {
+    "hermes_home": "data/hermes-home",
+    "openclaw_home": "data/openclaw-home",
+    "memories_dir": "data/hermes-home/memories",
+    "skills_dir": "data/hermes-home/skills"
+  },
   "ports": { "fusion_panel": 24318 }
 }
 EOF
-echo "  ✓ config/local-dev.json"
-
-mkdir -p data/hermes-home/memories data/hermes-home/skills logs
+    echo "  ✓ config/local-dev.json"
+  else
+    echo "  保留已有 config/local-dev.json"
+  fi
+else
+  echo '[5/5] 配置已存在，保留 .env / config.yaml / openclaw.json'
+fi
 
 # 初始化记忆索引（已存在则跳过，不覆盖）
 MEM_DIR=data/hermes-home/memories
@@ -196,7 +232,6 @@ cat > "$MEM_DIR/INDEX.md" <<'EOF'
 # 记忆索引
 
 > 短指针 + 详情文件。索引只留一句话指针，详情看对应文件。
-> 最后更新: $(date +%Y-%m-%d)
 
 ## 📌 核心规则
 
@@ -237,4 +272,5 @@ echo '╚═══════════════════════�
 echo ''
 echo "  启动面板:  cd $TARGET_DIR && npm run cockpit"
 echo "  访问面板:  http://127.0.0.1:24318/"
+echo "  日志目录:  $TARGET_DIR/data/hermes-home/logs"
 echo ''
