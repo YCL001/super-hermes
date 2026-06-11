@@ -153,6 +153,22 @@
     .action-btn:hover { border-color: rgba(96,165,250,.7); background: linear-gradient(180deg, rgba(59,130,246,.34), rgba(37,99,235,.22)); }
     .action-btn:disabled { cursor: not-allowed; opacity: .6; }
     .inline-hint { margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .token-strip {
+      margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(255,255,255,.03);
+    }
+    .token-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: center; }
+    .token-cell { min-width: 0; }
+    .token-label { color: var(--muted); font-size: 12px; }
+    .token-value { margin-top: 4px; font-size: 16px; font-weight: 800; }
+    .token-sub { color: var(--muted); font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .token-chart-wrap { margin-top: 10px; }
+    .token-chart {
+      width: 100%; height: 52px; display: block; border-radius: 10px;
+      background: rgba(8,16,32,.55); border: 1px solid rgba(255,255,255,.04);
+    }
+    .token-legend { display: flex; gap: 14px; align-items: center; margin-top: 8px; color: var(--muted); font-size: 11px; }
+    .token-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; margin-right: 6px; }
 
     .office-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
     .hand-card {
@@ -207,6 +223,34 @@
         <span class="chip">主入口：终端</span>
         <span class="chip">面板职责：配置 / 监控 / 反馈</span>
         <span class="chip" id="lastRefresh">最近刷新：--</span>
+      </div>
+    </div>
+
+    <div class="token-strip">
+      <div class="token-top">
+        <div class="token-cell">
+          <div class="token-label">Hermes</div>
+          <div id="tokenHermesTotal" class="token-value">--</div>
+          <div id="tokenHermesSub" class="token-sub">in -- / out --</div>
+        </div>
+        <div class="token-cell">
+          <div class="token-label">执行手</div>
+          <div id="tokenExecutorTotal" class="token-value">--</div>
+          <div id="tokenExecutorSub" class="token-sub">in -- / out --</div>
+        </div>
+        <div class="token-cell">
+          <div class="token-label">总计</div>
+          <div id="tokenOverallTotal" class="token-value">--</div>
+          <div id="tokenOverallSub" class="token-sub">cost --</div>
+        </div>
+      </div>
+      <div class="token-chart-wrap">
+        <svg id="tokenChart" class="token-chart" viewBox="0 0 1000 52" preserveAspectRatio="none"></svg>
+        <div class="token-legend">
+          <span><span class="token-dot" style="background:#60a5fa;"></span>Hermes</span>
+          <span><span class="token-dot" style="background:#2dd4bf;"></span>执行手</span>
+          <span id="tokenUpdatedAt">更新：--</span>
+        </div>
       </div>
     </div>
 
@@ -423,6 +467,62 @@
         .replace(/'/g, '&#39;');
     }
 
+    function formatTokens(value) {
+      const n = Number(value || 0);
+      if (!n) return '0';
+      if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
+      if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+      return `${Math.round(n)}`;
+    }
+
+    function formatCost(value) {
+      const n = Number(value || 0);
+      return n ? `cost ${n.toFixed(4)}` : 'cost 0';
+    }
+
+    function buildLinePath(values, width, height, maxValue) {
+      if (!values.length) return '';
+      if (!maxValue) {
+        const mid = Math.round(height / 2);
+        return `M 0 ${mid} L ${width} ${mid}`;
+      }
+      return values.map((value, index) => {
+        const x = values.length === 1 ? 0 : (index * width) / (values.length - 1);
+        const y = height - ((Number(value || 0) / maxValue) * (height - 6)) - 3;
+        return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      }).join(' ');
+    }
+
+    function renderTokenMetrics(tokenData) {
+      const summary = tokenData?.summary || {};
+      const hermes = summary.hermes || {};
+      const executor = summary.executor || {};
+      const total = summary.total || {};
+      el('tokenHermesTotal').textContent = formatTokens(hermes.totalTokens);
+      el('tokenHermesSub').textContent = `in ${formatTokens(hermes.inputTokens)} / out ${formatTokens(hermes.outputTokens)}`;
+      el('tokenExecutorTotal').textContent = formatTokens(executor.totalTokens);
+      el('tokenExecutorSub').textContent = `in ${formatTokens(executor.inputTokens)} / out ${formatTokens(executor.outputTokens)}`;
+      el('tokenOverallTotal').textContent = formatTokens(total.totalTokens);
+      el('tokenOverallSub').textContent = formatCost(total.cost);
+      const updated = tokenData?.updatedAt ? new Date(tokenData.updatedAt) : null;
+      el('tokenUpdatedAt').textContent = `更新：${updated ? updated.toLocaleTimeString('zh-CN') : '--'}`;
+
+      const chart = el('tokenChart');
+      const points = Array.isArray(tokenData?.series?.points) ? tokenData.series.points : [];
+      const width = 1000;
+      const height = 52;
+      const hermesValues = points.map((p) => Number(p?.hermes || 0));
+      const executorValues = points.map((p) => Number(p?.executor || 0));
+      const maxValue = Math.max(0, ...hermesValues, ...executorValues);
+      const hermesPath = buildLinePath(hermesValues, width, height, maxValue);
+      const executorPath = buildLinePath(executorValues, width, height, maxValue);
+      chart.innerHTML = `
+        <path d="M 0 51 L 1000 51" stroke="rgba(255,255,255,.08)" stroke-width="1" fill="none"></path>
+        <path d="${hermesPath}" stroke="#60a5fa" stroke-width="2" fill="none" stroke-linecap="round"></path>
+        <path d="${executorPath}" stroke="#2dd4bf" stroke-width="2" fill="none" stroke-linecap="round"></path>
+      `;
+    }
+
     function normalizeModelName(value) {
       if (!value) return '';
       const raw = String(value).trim();
@@ -626,16 +726,18 @@
 
     async function load() {
       try {
-        const [overviewRes, subRes, memoryRes, skillRes] = await Promise.all([
+        const [overviewRes, subRes, memoryRes, skillRes, tokenRes] = await Promise.all([
           fetch('/api/overview'),
           fetch('/api/subagents'),
           fetch('/api/memories'),
-          fetch('/api/skills')
+          fetch('/api/skills'),
+          fetch('/api/tokens?range=24h')
         ]);
         const overview = await overviewRes.json();
         const subData = await subRes.json();
         const memoryData = await memoryRes.json();
         const skillData = await skillRes.json();
+        const tokenData = await tokenRes.json();
         const hermes = overview.hermesHost || {};
         const exec = overview.embeddedOpenclawExec || {};
         const runtime = overview.runtime || {};
@@ -686,6 +788,7 @@
         renderTasks(tasks, workersByTask, subByTask);
         renderMemories(memoryFiles);
         renderSkills(skills);
+        renderTokenMetrics(tokenData);
 
         el('taskTotal').textContent = tasks.length;
         el('workerTotal').textContent = workers.length;

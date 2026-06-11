@@ -37,6 +37,7 @@ const DEFAULT_STATE = {
   cronRuns: {},
   kanbanTasks: [],
   workspaceFiles: {},
+  tokenEntries: [],
 };
 
 function ensureDir(dir) {
@@ -275,4 +276,39 @@ export function writeWorkspaceFile(key, content) {
   const filePath = getWorkspaceFilePath(key);
   fs.writeFileSync(filePath, content, 'utf-8');
   return filePath;
+}
+
+export function listTokenEntries(limit = 500) {
+  const entries = Array.isArray(loadState().tokenEntries) ? loadState().tokenEntries : [];
+  return entries
+    .slice()
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+    .slice(0, limit);
+}
+
+export function appendTokenEntry(entry) {
+  return mutateState((state) => {
+    state.tokenEntries ||= [];
+    state.tokenEntries.push({
+      id: entry.id || `tok-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      at: entry.at || new Date().toISOString(),
+      side: entry.side || 'unknown',
+      taskId: entry.taskId || '',
+      sessionId: entry.sessionId || '',
+      workerId: entry.workerId || '',
+      subAgentId: entry.subAgentId || '',
+      source: entry.source || '',
+      provider: entry.provider || '',
+      model: entry.model || '',
+      inputTokens: Number(entry.inputTokens || 0),
+      outputTokens: Number(entry.outputTokens || 0),
+      totalTokens: Number(entry.totalTokens || 0),
+      cost: Number(entry.cost || 0),
+      meta: entry.meta || null,
+    });
+    if (state.tokenEntries.length > 5000) {
+      state.tokenEntries = state.tokenEntries.slice(-5000);
+    }
+    return state;
+  }).tokenEntries;
 }

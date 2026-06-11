@@ -7,9 +7,22 @@ const __dirname = path.dirname(__filename);
 export const PROJECT_ROOT = path.resolve(__dirname, '..');
 export const LOCAL_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'local-dev.json');
 
+function defaultConfig() {
+  return {
+    paths: {
+      hermes_home: 'data/hermes-home',
+      openclaw_home: 'data/openclaw-home',
+      skills_dir: 'data/hermes-home/skills',
+      memories_dir: 'data/hermes-home/memories',
+      openclaw_review: 'reused/openclaw-review',
+    },
+  };
+}
+
 export function loadLocalConfig() {
-  const raw = fs.readFileSync(LOCAL_CONFIG_PATH, 'utf-8');
-  const config = JSON.parse(raw);
+  const config = fs.existsSync(LOCAL_CONFIG_PATH)
+    ? JSON.parse(fs.readFileSync(LOCAL_CONFIG_PATH, 'utf-8'))
+    : defaultConfig();
   return {
     ...config,
     paths: Object.fromEntries(

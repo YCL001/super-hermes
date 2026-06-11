@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadLocalConfig } from '../shared/local-paths.mjs';
+import { readHermesConfigState } from '../shared/config-state.mjs';
 
 function safeRead(filePath) {
   try {
@@ -70,16 +71,21 @@ function memoryStats(memoriesDir) {
 
 export function getHermesOverview() {
   const config = loadLocalConfig();
+  const hermesState = readHermesConfigState();
   const hermesHome = config.paths.hermes_home;
-  const configPath = path.join(hermesHome, 'config.yaml');
+  const configPath = hermesState.hermesConfigPath;
   const skillsDir = config.paths.skills_dir;
   const memoriesDir = config.paths.memories_dir;
-  const raw = safeRead(configPath);
 
   return {
     home: hermesHome,
     configPath,
-    config: parseSimpleYamlConfig(raw),
+    config: {
+      modelDefault: hermesState.modelDefault,
+      modelProvider: hermesState.modelProvider,
+      terminalBackend: hermesState.terminalBackend,
+      reasoning: hermesState.reasoning,
+    },
     skillCount: walkSkillFiles(skillsDir).length,
     sampleSkills: walkSkillFiles(skillsDir).slice(0, 30).map(parseSkillMeta),
     memory: memoryStats(memoriesDir),

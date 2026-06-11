@@ -11,7 +11,7 @@ import {
   ensureStore, loadState, saveState, listSessions, getMessages, appendMessage, upsertSession,
   resetSession, deleteSession, getMemories, addMemory, deleteMemory, listCrons, saveCron,
   toggleCron, runCron, deleteCron, listCronRuns, listKanbanTasks, saveKanbanTask,
-  deleteKanbanTask, readWorkspaceFile, writeWorkspaceFile
+  deleteKanbanTask, readWorkspaceFile, writeWorkspaceFile, listTokenEntries, appendTokenEntry
 } from './local-store.mjs';
 
 const LOCAL_CONFIG = loadLocalConfig();
@@ -107,6 +107,69 @@ function parseBody(req) {
   });
 }
 
+function toNum(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sumTokenEntries(entries) {
+  return entries.reduce((acc, entry) => {
+    acc.inputTokens += toNum(entry.inputTokens);
+    acc.outputTokens += toNum(entry.outputTokens);
+    acc.totalTokens += toNum(entry.totalTokens) || (toNum(entry.inputTokens) + toNum(entry.outputTokens));
+    acc.cost += toNum(entry.cost);
+    acc.count += 1;
+    return acc;
+  }, { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, count: 0 });
+}
+
+function buildTokenSummary(entries) {
+  const hermesEntries = entries.filter((entry) => entry.side === 'hermes');
+  const executorEntries = entries.filter((entry) => entry.side === 'executor');
+  return {
+    hermes: sumTokenEntries(hermesEntries),
+    executor: sumTokenEntries(executorEntries),
+    total: sumTokenEntries(entries),
+  };
+}
+
+function buildTokenSeries(entries, range = '24h') {
+  const now = Date.now();
+  const settings = range === '1h'
+    ? { bucketMs: 5 * 60 * 1000, spanMs: 60 * 60 * 1000 }
+    : { bucketMs: 60 * 60 * 1000, spanMs: 24 * 60 * 60 * 1000 };
+  const start = now - settings.spanMs;
+  const buckets = [];
+  for (let t = start; t <= now; t += settings.bucketMs) {
+    buckets.push({
+      at: new Date(t).toISOString(),
+      hermes: 0,
+      executor: 0,
+      total: 0,
+    });
+  }
+  entries.forEach((entry) => {
+    const ts = new Date(entry.at || '').getTime();
+    if (!Number.isFinite(ts) || ts < start || ts > now) return;
+    const index = Math.min(buckets.length - 1, Math.max(0, Math.floor((ts - start) / settings.bucketMs)));
+    const total = toNum(entry.totalTokens) || (toNum(entry.inputTokens) + toNum(entry.outputTokens));
+    buckets[index].total += total;
+    if (entry.side === 'hermes') buckets[index].hermes += total;
+    if (entry.side === 'executor') buckets[index].executor += total;
+  });
+  return { range, bucketMs: settings.bucketMs, points: buckets };
+}
+
+function getTokenMetrics(range = '24h') {
+  const entries = listTokenEntries(5000);
+  return {
+    updatedAt: Date.now(),
+    entries: entries.slice(0, 50),
+    summary: buildTokenSummary(entries),
+    series: buildTokenSeries(entries, range),
+  };
+}
+
 function buildModels() {
   const routing = hermesOpenclawFusion.getModelRouting();
   const models = [];
@@ -153,6 +216,159 @@ function buildSkills() {
   };
   walk(root);
   return skills.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+}
+
+function getProviderConfigByModel(model) {
+  const ocPath = path.resolve('data/openclaw-home/openclaw.json');
+  const oc = JSON.parse(fs.readFileSync(ocPath, 'utf-8'));
+  const modelProviders = oc.models?.providers || {};
+  let providerName = 'deepseek';
+  let provider = modelProviders[providerName];
+  for (const [pn, pv] of Object.entries(modelProviders)) {
+    if (pv.models?.some((m) => m.id === model)) {
+      providerName = pn;
+      provider = pv;
+      break;
+    }
+  }
+  if (!provider) {
+    throw new Error(`未找到模型 ${model} 对应的 provider 配置`);
+  }
+  return {
+    providerName,
+    provider,
+    apiType: provider.api || 'openai-completions',
+    baseUrl: (provider.baseUrl || '').replace(/\/+$/, ''),
+    apiKey: provider.apiKey || process.env.DEEPSEEK_API_KEY || '',
+  };
+}
+
+async function callConfiguredModel(model, systemPrompt, userPrompt) {
+  const { providerName, apiType, baseUrl, apiKey } = getProviderConfigByModel(model);
+  if (!apiKey) throw new Error(`模型 ${model} 缺少 API key`);
+  if (!baseUrl) throw new Error(`模型 ${model} 缺少 baseUrl`);
+
+  if (apiType === 'openai-responses') {
+    const resp = await fetch(`${baseUrl}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          { role: 'system', content: [{ type: 'input_text', text: systemPrompt }] },
+          { role: 'user', content: [{ type: 'input_text', text: userPrompt }] },
+        ],
+        text: { format: { type: 'text' } },
+      }),
+    });
+    const raw = await resp.text();
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${raw.slice(0, 300)}`);
+    const data = JSON.parse(raw);
+    const outputText = Array.isArray(data.output)
+      ? data.output
+        .flatMap((item) => Array.isArray(item.content) ? item.content : [])
+        .filter((item) => item?.type === 'output_text' && item.text)
+        .map((item) => item.text)
+        .join('\n')
+      : '';
+    if (!outputText.trim()) throw new Error(`模型 ${model} 未返回可解析文本 (${providerName})`);
+    return {
+      text: outputText,
+      providerName,
+      model,
+      usage: {
+        inputTokens: toNum(data?.usage?.input_tokens ?? data?.usage?.prompt_tokens),
+        outputTokens: toNum(data?.usage?.output_tokens ?? data?.usage?.completion_tokens),
+        totalTokens: toNum(data?.usage?.total_tokens),
+      },
+    };
+  }
+
+  const resp = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 4000,
+      temperature: 0.2,
+    }),
+  });
+  const raw = await resp.text();
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${raw.slice(0, 300)}`);
+  const data = JSON.parse(raw);
+  const outputText = data.choices?.[0]?.message?.content || '';
+  if (!String(outputText).trim()) throw new Error(`模型 ${model} 未返回可解析文本 (${providerName})`);
+  return {
+    text: outputText,
+    providerName,
+    model,
+    usage: {
+      inputTokens: toNum(data?.usage?.prompt_tokens ?? data?.usage?.input_tokens),
+      outputTokens: toNum(data?.usage?.completion_tokens ?? data?.usage?.output_tokens),
+      totalTokens: toNum(data?.usage?.total_tokens),
+    },
+  };
+}
+
+function parseJsonFence(text) {
+  const raw = String(text || '').trim();
+  if (!raw) throw new Error('翻译结果为空');
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const payload = fenced?.[1] || raw;
+  return JSON.parse(payload);
+}
+
+async function translateSkillsToChinese(skills) {
+  const ocPath = path.resolve('data/openclaw-home/openclaw.json');
+  const oc = JSON.parse(fs.readFileSync(ocPath, 'utf-8'));
+  const primary = String(oc?.agents?.defaults?.model?.primary || 'deepseek/deepseek-v4-flash');
+  const model = primary.includes('/') ? primary.split('/').pop() : primary;
+  const compactSkills = skills.map((skill, index) => ({
+    index,
+    name: String(skill?.name || ''),
+    description: String(skill?.description || ''),
+  }));
+  const systemPrompt = '你是一个专业的软件技能目录翻译器。请把技能名称和描述翻译成简体中文。输出必须是纯 JSON，不要加解释。';
+  const userPrompt = [
+    '请把下面技能列表翻译成简体中文。',
+    '要求：',
+    '1. 保持数组顺序和 index 不变。',
+    '2. 返回 JSON 对象，格式为 {"items":[{"index":0,"nameZh":"...","descriptionZh":"..."}]}。',
+    '3. 如果名称是专有名词、模型名、产品名或不适合翻译，可保留原文。',
+    '4. 描述必须翻译成自然中文，简洁准确。',
+    '',
+    JSON.stringify(compactSkills),
+  ].join('\n');
+  const result = await callConfiguredModel(model, systemPrompt, userPrompt);
+  appendTokenEntry({
+    side: 'executor',
+    source: 'skills-translate',
+    provider: result.providerName,
+    model: result.model,
+    inputTokens: result.usage?.inputTokens,
+    outputTokens: result.usage?.outputTokens,
+    totalTokens: result.usage?.totalTokens,
+  });
+  const parsed = parseJsonFence(result.text);
+  const items = Array.isArray(parsed?.items) ? parsed.items : [];
+  return skills.map((skill, index) => {
+    const translated = items.find((item) => Number(item?.index) === index);
+    return {
+      ...skill,
+      translatedName: translated?.nameZh || skill.name,
+      translatedDescription: translated?.descriptionZh || skill.description,
+    };
+  });
 }
 
 function buildServerInfo() {
@@ -202,11 +418,27 @@ const server = http.createServer(async (req, res) => {
       const model = (body.model || '').trim();
       if (!model) return json(res, 400, { error: 'model 必填' });
       const configPath = path.resolve('data/hermes-home/config.yaml');
+      const ocPath = path.resolve('data/openclaw-home/openclaw.json');
       try {
+        let providerName = 'deepseek';
+        let baseUrl = 'https://api.deepseek.com';
+        if (fs.existsSync(ocPath)) {
+          const oc = JSON.parse(fs.readFileSync(ocPath, 'utf-8'));
+          for (const [pn, pv] of Object.entries(oc.models?.providers || {})) {
+            if (pv.models?.some((m) => m.id === model)) {
+              providerName = pn;
+              baseUrl = pv.baseUrl || baseUrl;
+              break;
+            }
+          }
+        }
+        const hermesProvider = providerName === 'deepseek' ? 'deepseek' : `custom:${providerName}`;
         let cfg = fs.readFileSync(configPath, 'utf-8');
-        cfg = cfg.replace(/^(default:\s*).+$/m, `$1${model}`);
+        cfg = cfg.replace(/^(\s*default:\s*).+$/m, `$1${model}`);
+        cfg = cfg.replace(/^(\s*provider:\s*).+$/m, `$1${hermesProvider}`);
+        cfg = cfg.replace(/^(\s*base_url:\s*).+$/m, `$1${baseUrl}`);
         fs.writeFileSync(configPath, cfg, 'utf-8');
-        return json(res, 200, { ok: true, model, path: configPath });
+        return json(res, 200, { ok: true, model, provider: hermesProvider, baseUrl, path: configPath });
       } catch (err) {
         return json(res, 500, { error: err.message });
       }
@@ -256,10 +488,9 @@ const server = http.createServer(async (req, res) => {
         const baseUrl = (provider.baseUrl || '').replace(/\/+$/, '');
         let apiKey = provider.apiKey || '';
         if (!apiKey) {
-          const userHome = process.env.USERPROFILE || process.env.HOME || '';
           const envPaths = [
             path.resolve('data/hermes-home/.env'),
-            userHome ? path.join(userHome, 'AppData', 'Local', 'hermes', '.env') : '',
+            'C:\\Users\\Administrator\\AppData\\Local\\hermes\\.env',
           ];
           for (const ep of envPaths) {
             if (fs.existsSync(ep)) {
@@ -383,7 +614,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && pathname === '/api/auth/logout') return json(res, 200, { ok: true });
     if (req.method === 'GET' && pathname === '/api/channels') return json(res, 200, { ok: true, channels: [] });
     if (req.method === 'GET' && pathname === '/api/keys') return json(res, 200, { ok: true, keys: [] });
-    if (req.method === 'GET' && pathname === '/api/tokens') return json(res, 200, { entries: [], totalCost: 0, totalInput: 0, totalOutput: 0, totalMessages: 0, updatedAt: Date.now() });
+    if (req.method === 'GET' && pathname === '/api/tokens') {
+      return json(res, 200, getTokenMetrics(url.searchParams.get('range') || '24h'));
+    }
+    if (req.method === 'GET' && pathname === '/api/tokens/series') {
+      return json(res, 200, buildTokenSeries(listTokenEntries(5000), url.searchParams.get('range') || '24h'));
+    }
     if (req.method === 'GET' && pathname === '/api/agentlog') return json(res, 200, []);
     if (req.method === 'GET' && pathname === '/api/upload-config') return json(res, 200, { ok: true, uploadsEnabled: false });
     if (req.method === 'POST' && pathname === '/api/upload-reference/resolve') return json(res, 200, { ok: true, items: [] });

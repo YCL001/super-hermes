@@ -11,6 +11,7 @@
 import { exec } from 'child_process';
 import path from 'path';
 import { eventBus } from '../runtime/events/bus.mjs';
+import { readExecConfigState } from './config-state.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -34,6 +35,23 @@ function decodeOutput(buf) {
     if (!decoded.includes('\uFFFD')) return decoded;
   } catch {}
   return buf;
+}
+
+function summarizeFailure(text, fallback = '') {
+  const raw = String(text || fallback || '');
+  if (/HTTP\s*401|Authentication Fails|invalid api key|api key.*invalid/i.test(raw)) {
+    return '执行失败：API Key 无效或已过期，请检查当前模型供应商密钥。';
+  }
+  if (/HTTP\s*403|permission|forbidden/i.test(raw)) return '执行失败：供应商拒绝访问，请检查模型权限。';
+  if (/HTTP\s*5\d\d|Bad Gateway|Service Unavailable/i.test(raw)) return '执行失败：模型供应商服务异常，请稍后重试或切换供应商。';
+  const clean = raw
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/\[[0-9;]*m/g, '')
+    .replace(/\r+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 800);
+  return clean || '执行失败：未知错误';
 }
 
 /**
@@ -120,19 +138,31 @@ export async function executeTask(task, worker, sched) {
 
       const hermesCmd = process.platform === 'win32' ? 'hermes.exe' : 'hermes';
       const hermesHome = process.env.HERMES_HOME || path.join(process.cwd(), 'data', 'hermes-home');
+      const execState = readExecConfigState();
+      const execProviderName = execState.providerName || 'deepseek';
+      const execProvider = execProviderName.includes(':') || execProviderName === 'deepseek'
+        ? execProviderName
+        : `custom:${execProviderName}`;
+      const execModel = execState.modelId || 'deepseek-v4-flash';
 
       output = await new Promise((resolve, reject) => {
         const child = exec(
-          `"${hermesCmd}" chat -q ${JSON.stringify(goal)} --yolo --model deepseek-v4-flash --provider deepseek`,
+          `"${hermesCmd}" chat -q ${JSON.stringify(goal)} --yolo --model ${execModel} --provider ${execProvider}`,
           {
             timeout: 180000,
             maxBuffer: 10 * 1024 * 1024,
             env: { ...process.env, HERMES_HOME: hermesHome },
           },
-          (error, stdout) => {
+          (error, stdout, stderr) => {
             clearInterval(hbInterval);
-            if (error && !error.killed) reject(error);
-            else resolve(stdout || '');
+            const combined = `${stdout || ''}\n${stderr || ''}`;
+            if (error && !error.killed) {
+              reject(new Error(summarizeFailure(combined, error.message)));
+            } else if (/HTTP\s*(401|403|5\d\d)|Authentication Fails|Error code:\s*(401|403|5\d\d)/i.test(combined)) {
+              reject(new Error(summarizeFailure(combined)));
+            } else {
+              resolve(stdout || '');
+            }
           },
         );
       });

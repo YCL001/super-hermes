@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadLocalConfig } from '../shared/local-paths.mjs';
+import { readExecConfigState } from '../shared/config-state.mjs';
 
 function safeRead(filePath) {
   try {
@@ -73,8 +74,14 @@ function reusedSourceSummary(reusedOpenclawDir) {
 
 export function getOpenclawExecOverview() {
   const config = loadLocalConfig();
+  const execState = readExecConfigState();
+  const detected = detectOpenclawConfig(config.paths.openclaw_home);
   return {
-    config: detectOpenclawConfig(config.paths.openclaw_home),
+    config: {
+      ...detected,
+      defaultPrimaryModel: execState.fullModel || detected.defaultPrimaryModel || '',
+      providerCount: execState.providerCount ?? detected.providerCount ?? 0,
+    },
     reviewProject: packageSummary(config.paths.openclaw_review),
     reusedSource: reusedSourceSummary(config.paths.openclaw_review),
   };
