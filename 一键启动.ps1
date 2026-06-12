@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(ValueFromRemainingArguments = $true)]
   [string[]]$HermesArgs
 )
@@ -10,14 +10,14 @@ $env:HERMES_LOG_DIR = Join-Path $env:HERMES_HOME 'logs'
 $frontendUrl = 'http://127.0.0.1:24318/'
 $frontendCommand = "Set-Location '$projectRoot'; `$env:HERMES_HOME='$env:HERMES_HOME'; `$env:HERMES_LOG_DIR='$env:HERMES_LOG_DIR'; node .\scripts\cockpit.mjs"
 
-Write-Host '1/3 启动前端服务' -ForegroundColor Yellow
+Write-Host '1/3 Starting cockpit service' -ForegroundColor Yellow
 Start-Process powershell -WindowStyle Normal -ArgumentList @(
   '-NoExit',
   '-ExecutionPolicy', 'Bypass',
   '-Command', $frontendCommand
 )
 
-Write-Host '2/3 打开面板网页' -ForegroundColor Yellow
+Write-Host '2/3 Opening cockpit page' -ForegroundColor Yellow
 $chromeExe = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 if (Test-Path $chromeExe) {
   Start-Process $chromeExe -ArgumentList $frontendUrl
@@ -25,7 +25,7 @@ if (Test-Path $chromeExe) {
   Start-Process $frontendUrl
 }
 
-Write-Host '3/3 启动 Hermes 主脑' -ForegroundColor Yellow
+Write-Host '3/3 Starting Hermes CLI' -ForegroundColor Yellow
 Set-Location $projectRoot
 if ($HermesArgs -and $HermesArgs.Count -gt 0) {
   & hermes @HermesArgs

@@ -1,109 +1,72 @@
-# 超级 Hermes 使用说明
+# Super Hermes
 
-这是一个 Hermes + OpenClaw 融合面板。  
-Hermes 主脑只负责接任务、拆任务、派给执行手；执行手真正干活；面板只负责展示状态。
+Super Hermes is a local fusion workspace for Hermes + OpenClaw. Hermes handles task decomposition, executors perform the actual work, and the cockpit provides a web view for status and operations.
 
-## 一条命令安装
+## Install
+
+### Linux / macOS
 
 ```bash
-# Linux / macOS
 curl -fsSL https://github.com/YCL001/super-hermes/raw/main/install.sh | bash
-
-# Windows
-curl -fsSL https://github.com/YCL001/super-hermes/raw/main/install.bat | cmd
 ```
 
-安装过程：
-1. 检查 Node.js / Hermes（缺的自动装）
-2. `git clone` 到 `~/super-hermes`
-3. `npm install`
-4. 终端交互输入 API 服务商信息（名称 / 接口地址 / 密钥 / 模型 / API 类型）
-5. 自动生成配置文件
-6. 完毕
+### Windows
 
-## 启动
+Do not use `curl ... | cmd`. On Windows, download first and then run:
 
-方式一：只启动面板
+```powershell
+curl.exe -L "https://github.com/YCL001/super-hermes/raw/main/install.bat" -o install.bat
+cmd /c install.bat
+```
+
+Or inside the cloned repository, just double-click `install.bat`.
+
+## What The Installer Does
+
+1. Checks `Node.js`
+2. Checks `Git`
+3. Checks `Hermes CLI`
+4. Runs `npm install`
+5. Creates local config and data directories if missing
+
+The installer does not overwrite existing local config files.
+
+## Start
+
+### Start cockpit only
 
 ```bash
-cd ~/super-hermes
 npm run cockpit
 ```
 
-打开浏览器访问 `http://127.0.0.1:24318/`
+Then open `http://127.0.0.1:24318/`.
 
-方式二：Windows 一键启动（推荐）
+### Windows one-click start
 
-直接双击根目录：
+Double-click:
+
 - `一键启动.cmd`
 
-它会自动：
-1. 启动前端面板
-2. 打开浏览器
-3. 启动 Hermes 主脑
+It will:
 
-不开面板也能用——执行手是 Hermes 的一部分，不依赖面板。 
+1. Start the cockpit service
+2. Open the cockpit page in the browser
+3. Start the Hermes CLI
 
-## 架构
+## Local Files
 
-```
-用户 ──→ Hermes CLI（主脑）
-              │ 只派单，不干活
-              ▼
-        shared/executor.mjs（执行手）
-              │ 直接跑 shell / spawn Hermes 子进程
-              ▼
-           结果返回用户
+The project keeps local state under `data/`:
 
-        ui-cockpit/（面板，纯展示）
-              可选监控，不开不影响
-```
+- `data/hermes-home/.env`
+- `data/hermes-home/config.yaml`
+- `data/openclaw-home/openclaw.json`
+- `config/local-dev.json`
 
-## 项目结构
+Fill in your own provider URLs, API keys, and model IDs there after installation.
 
-```
-super-hermes/
-├── shared/                      # 核心模块
-│   ├── executor.mjs             # 执行手（唯一干活的地方）
-│   ├── memory-manager.mjs       # 短指针记忆管理
-│   └── local-paths.mjs          # 本地路径
-├── runtime/
-│   ├── scheduler/index.mjs      # 任务调度器
-│   └── events/bus.mjs           # 事件总线
-├── control-core/                # 控制层
-├── exec-core/                   # 执行层接口
-├── ui-cockpit/                  # Web 面板（纯展示）
-├── install.sh                   # Linux/macOS 安装脚本
-├── install.bat                  # Windows 安装脚本
-└── package.json
-```
+## Requirements
 
-## 配置
-
-安装时交互式配置，每个服务商需要：
-
-| 信息 | 示例 |
-|------|------|
-| 名称 | `deepseek` / `gs88` |
-| 接口地址 | `https://api.deepseek.com` |
-| 密钥 | `sk-xxx` |
-| API 类型 | `openai-completions` / `openai-responses` |
-| 模型 | `deepseek-v4-flash,gpt-5.5` |
-
-配置文件存放在 `data/` 下，不写系统盘。
-
-## 记忆系统
-
-短指针 + 索引方案：
-
-- `data/hermes-home/memories/INDEX.md` — 目录，每条只有一句话指针
-- `data/hermes-home/memories/RULES.md` — 核心行为规则
-- 详情文件单独存放，不堆在一个文件里
-
-## 依赖
-
-| 软件 | 说明 |
-|------|------|
-| Node.js 18+ | 运行面板（安装脚本会自动检查） |
-| Hermes | AI Agent 框架（安装脚本会自动装） |
-| npm 依赖 | `ws`（安装时 `npm install`） |
+- `Node.js` 18+
+- `Git`
+- `Hermes CLI`
+- npm dependency: `ws`
